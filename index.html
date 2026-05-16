@@ -110,7 +110,7 @@
 <body>
 
 <header>
-  <h1>Chicago TIF Dashboard — Money Flowing Outside the District</h1>
+  <h1>Chicago TIF Dashboard — Money Flowing Outside the District <span id="titleYears" style="font-weight:400;color:#5a738a;font-size:14px;margin-left:6px;font-variant-numeric:tabular-nums">(2016–2026)</span></h1>
   <div class="sub">
     Tax Increment Financing transfers and projects where money raised in one TIF was spent on a project outside
     that district (geographically) or paid to another unit of local government (intergovernmental agreements).
@@ -680,6 +680,7 @@ document.querySelectorAll('th[data-k]').forEach(th => {
   if (mn>mx) { if (id==='yrMin') $('yrMax').value=mn; else $('yrMin').value=mx; }
   $('yrMinLbl').textContent=$('yrMin').value;
   $('yrMaxLbl').textContent=$('yrMax').value;
+  $('titleYears').textContent = `(${$('yrMin').value}–${$('yrMax').value})`;
   applyFilters();
   if (selectedFeat) drawProjectsFor(selectedFeat.properties.name, selectedFeat);
 }));
@@ -688,6 +689,7 @@ $('resetBtn').addEventListener('click', () => {
   ['fltDistrict','fltKind','fltOutside','fltText'].forEach(id => $(id).value = '');
   $('yrMin').value = 2016; $('yrMax').value = 2026;
   $('yrMinLbl').textContent='2016'; $('yrMaxLbl').textContent='2026';
+  $('titleYears').textContent = '(2016–2026)';
   // Reset map-only filters back to defaults too
   $('mapDist').value = 'any';
   $('mapType').value = 'all';
