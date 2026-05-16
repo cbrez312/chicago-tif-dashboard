@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chicago TIF Dashboard — money flowing outside the district</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+  :root {
+    --bg:#f7f7f8; --panel:#fff; --ink:#111; --muted:#666; --border:#e3e3e8;
+    --accent:#0a558c;       /* Chicago blue-ish */
+    --accent-2:#c0392b;     /* red highlight */
+    --active-fill:#2980b9; --expired-fill:#7f8c8d;
+    --iga:#9b59b6; --rda:#e67e22; --geo-out:#c0392b; --adjacent:#f1c40f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    height:100%;overflow:hidden}
+  /* Full-viewport flex chain: header (auto) → layout (fills rest, 65% map / 35% table)
+     min-height:0 on every nested grid/flex child so the chain respects the viewport
+     (avoids the "gray empty space below map" gap that vh-based sizing creates). */
+  body{display:flex;flex-direction:column}
+  header{flex:0 0 auto;padding:14px 20px;background:var(--panel);border-bottom:1px solid var(--border)}
+  header h1{font-size:18px;margin:0 0 4px;color:var(--accent)}
+  header .sub{color:var(--muted);font-size:12px}
+  /* Default split: equal at small heights, slightly map-favored at large.
+     User can override via the "Expand table / Expand map" buttons. */
+  .layout{flex:1 1 auto;display:grid;grid-template-rows:55% 45%;min-height:0}
+  .layout.table-expanded{grid-template-rows:30% 70%}
+  .layout.map-expanded  {grid-template-rows:80% 20%}
+  @media (max-height: 800px) { .layout{grid-template-rows:50% 50%} }
+  @media (max-height: 650px) { .layout{grid-template-rows:45% 55%} }
+  .top{display:grid;grid-template-columns:1fr 320px;gap:0;min-height:0}
+  #map{width:100%;height:100%;min-height:0}
+  .side{padding:14px;background:var(--panel);overflow-y:auto;border-left:1px solid var(--border);min-height:0}
+  /* Prominent divider + section header so the data pane reads as its own component */
+  .pane-header{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:8px 14px;background:linear-gradient(180deg,#1f2c3a 0%,#2c3e50 100%);
+    color:#fff;border-top:4px solid var(--accent);box-shadow:0 -2px 6px rgba(0,0,0,.08) inset}
+  .pane-header h2{margin:0;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#fff}
+  .pane-header .sub{font-size:11px;color:#aebac6;font-weight:normal;text-transform:none;letter-spacing:0;margin-left:8px}
+  .pane-header button.size-btn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);
+    padding:4px 10px;border-radius:4px;font-size:11px;cursor:pointer}
+  .pane-header button.size-btn:hover{background:rgba(255,255,255,.22)}
+  .pane-header button.size-btn.active{background:var(--accent);border-color:var(--accent)}
+  .side h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 8px}
+  .side .tif-name{font-size:16px;font-weight:600;margin:6px 0}
+  .stat{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--border)}
+  .stat:last-child{border-bottom:0}
+  .stat .lbl{color:var(--muted)}
+  .stat .val{font-variant-numeric:tabular-nums;font-weight:600}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:12px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .swatch{display:inline-block;width:12px;height:12px;border-radius:2px;border:1px solid #0008}
+  .bottom{display:flex;flex-direction:column;min-height:0}
+  .controls{flex:0 0 auto;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--border);
+    display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+  .controls label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+  .controls input,.controls select{padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit}
+  .controls input[type=range]{width:160px}
+  .controls .yrs{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink)}
+  .controls button{padding:6px 10px;background:var(--accent);color:#fff;border:0;border-radius:4px;cursor:pointer}
+  .controls button.secondary{background:#fff;color:var(--ink);border:1px solid var(--border)}
+  .table-wrap{flex:1 1 auto;overflow:auto;min-height:0;background:var(--panel)}
+  .count-row{flex:0 0 auto}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}
+  th{position:sticky;top:0;background:#fafafa;cursor:pointer;user-select:none;
+     border-bottom:2px solid var(--border);z-index:1}
+  th .arrow{color:#aaa;margin-left:4px}
+  tbody tr:hover{background:#f0f6fb}
+  td.amount{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  td.kind{white-space:nowrap}
+  .pill{display:inline-block;padding:2px 7px;border-radius:9px;font-size:11px;font-weight:600;color:#fff}
+  .pill.iga{background:var(--iga)} .pill.rda{background:var(--rda)} .pill.transfer{background:#34495e}
+  .pill.outside{background:var(--geo-out)}
+  .pill.adjacent{background:var(--adjacent);color:#000}
+  .leaflet-popup-content{font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:280px}
+  .leaflet-popup-content h3{margin:0 0 4px;font-size:13px}
+  .leaflet-popup-content .meta{color:var(--muted);font-size:11px;margin-bottom:4px}
+  .leaflet-popup-content .amt{font-weight:600}
+  .count-row{font-size:12px;color:var(--muted);padding:6px 14px;background:#fafafa;border-bottom:1px solid var(--border)}
+  .badges{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 0}
+  .badge{font-size:11px;background:#eef3f7;border:1px solid var(--border);padding:2px 6px;border-radius:9px;color:var(--muted)}
+  .help{font-size:11.5px;color:var(--muted);margin-top:6px}
+  .help a{color:var(--accent)}
+  @media (max-width: 850px) {
+    .top{grid-template-columns:1fr}
+    .side{border-left:0;border-top:1px solid var(--border);max-height:240px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Chicago TIF Dashboard — Money Flowing Outside the District</h1>
+  <div class="sub">
+    Tax Increment Financing transfers and projects where money raised in one TIF was spent on a project outside
+    that district (geographically) or paid to another unit of local government (intergovernmental agreements).
+    Data: City of Chicago Data Portal (Boundaries, RDA &amp; IGA Projects, Annual Reports).
+    <a href="#" id="aboutLink">About the data &amp; definitions</a> ·
+    <a href="#" id="caveatsLink" style="color:#c0392b;font-weight:600">⚠ Read 7 important caveats before citing numbers</a>.
+  </div>
+</header>
+
+<!-- About / Caveats modal -->
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:2000;padding:30px;overflow:auto">
+  <div style="max-width:800px;margin:0 auto;background:#fff;border-radius:6px;padding:24px 28px;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 id="modalTitle" style="margin:0;font-size:18px;color:var(--accent)">About the data</h2>
+      <button id="modalClose" style="background:none;border:0;font-size:24px;cursor:pointer;color:#666;padding:0 6px">×</button>
+    </div>
+    <div id="modalBody" style="font-size:13px;line-height:1.55"></div>
+    <div id="modalFooter" style="margin-top:18px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+      <button class="secondary" id="modalAck" style="padding:7px 14px;background:#fff;color:#111;border:1px solid var(--border);border-radius:4px;cursor:pointer">I understand &amp; want to continue</button>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="top">
+    <div id="map"></div>
+    <aside class="side">
+      <h2>Map filters</h2>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">
+          Distance from TIF border
+          <select id="mapDist" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit">
+            <option value="any">Any distance</option>
+            <option value="le25">≤ 25 m  (boundary-adjacent only)</option>
+            <option value="le50">≤ 50 m</option>
+            <option value="le100">≤ 100 m</option>
+            <option value="gt100">&gt; 100 m  (clearly inside or clearly outside)</option>
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">
+          Transaction type
+          <select id="mapType" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit">
+            <option value="all">All types</option>
+            <option value="IGA">Only IGA (inter-governmental)</option>
+            <option value="RDA">Only RDA (private redevelopment)</option>
+            <option value="IGA-CPS">Only IGA → CPS</option>
+            <option value="IGA-PD">Only IGA → Park District</option>
+            <option value="IGA-OTHER">Only IGA → other agencies (CTA, Library, etc.)</option>
+          </select>
+        </label>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">
+          Geographic relation
+          <select id="mapGeo" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit">
+            <option value="leaves">Money leaves district (geo OR inter-gov)</option>
+            <option value="outside_only">Only projects outside the TIF polygon</option>
+            <option value="all_in_tif">All projects funded by this TIF (incl. in-district private RDAs)</option>
+          </select>
+        </label>
+      </div>
+      <h2>Selected TIF</h2>
+      <div id="selPanel">
+        <div class="tif-name" id="selName">— Click a TIF on the map —</div>
+        <div class="help">Districts shaded in <span style="color:var(--active-fill)">blue</span> are active.
+          <span style="color:var(--expired-fill)">Grey dashed</span> outlines are recently-expired TIFs (still
+          have post-2016 activity on record).</div>
+        <div class="legend">
+          <span><span class="swatch" style="background:var(--iga)"></span>IGA (inter-governmental)</span>
+          <span><span class="swatch" style="background:var(--rda)"></span>RDA (redevelopment)</span>
+          <span><span class="swatch" style="background:var(--geo-out);border:2px solid #000"></span>Outside funding TIF (&gt;25 m)</span>
+          <span><span class="swatch" style="background:var(--adjacent);border:2px solid #000"></span>Boundary-adjacent (&lt;25 m — geocoder noise)</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="bottom">
+    <div class="pane-header">
+      <div>
+        <h2>📋 Data Table</h2>
+        <span class="sub">All TIF transactions &amp; projects · filters below apply to this table only (not the map)</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="size-btn" data-size="map"     title="Expand the map, shrink the table">▲ Map</button>
+        <button class="size-btn active" data-size="default" title="Balanced split">▣ Split</button>
+        <button class="size-btn" data-size="table"   title="Expand the table, shrink the map">▼ Table</button>
+      </div>
+    </div>
+    <div class="controls">
+      <label>TIF district
+        <select id="fltDistrict"><option value="">All districts</option></select>
+      </label>
+      <label>Transfer / project type
+        <select id="fltKind">
+          <option value="">All types</option>
+          <option value="RDA">RDA (redevelopment)</option>
+          <option value="IGA">IGA (intergovernmental)</option>
+          <option value="Financial transfer">Surplus / municipal / school transfers (from reports)</option>
+        </select>
+      </label>
+      <label>Out-of-district only
+        <select id="fltOutside">
+          <option value="">No filter</option>
+          <option value="outside">Physically outside funding TIF (any distance)</option>
+          <option value="clear_outside">Clearly outside (&gt;25 m from boundary)</option>
+          <option value="adjacent">Boundary-adjacent only (&lt;25 m — uncertain)</option>
+          <option value="leaves">Money leaves district (geo OR inter-governmental)</option>
+        </select>
+      </label>
+      <label>Year range
+        <input type="range" id="yrMin" min="2016" max="2026" step="1" value="2016">
+      </label>
+      <label>through
+        <input type="range" id="yrMax" min="2016" max="2026" step="1" value="2026">
+      </label>
+      <span class="yrs"><span id="yrMinLbl">2016</span>–<span id="yrMaxLbl">2026</span></span>
+      <label>Search
+        <input id="fltText" type="search" placeholder="project, developer, address, partner…">
+      </label>
+      <button class="secondary" id="resetBtn">Reset filters</button>
+      <button id="csvBtn">Export CSV</button>
+    </div>
+    <div class="count-row" id="countRow">— rows</div>
+    <div class="table-wrap"><table id="tbl">
+      <thead><tr>
+        <th data-k="tif_district">TIF district <span class="arrow"></span></th>
+        <th data-k="year">Year <span class="arrow"></span></th>
+        <th data-k="kind">Type <span class="arrow"></span></th>
+        <th data-k="name">Project / Transfer <span class="arrow"></span></th>
+        <th data-k="partner">Partner / Developer <span class="arrow"></span></th>
+        <th data-k="address">Address <span class="arrow"></span></th>
+        <th data-k="amount" style="text-align:right">Amount ($) <span class="arrow"></span></th>
+        <th data-k="outside">Outside TIF? <span class="arrow"></span></th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- Data (var-tagged for file:// support, so the user can double-click index.html) -->
+<script src="data/tif_boundaries.js"></script>
+<script src="data/projects.js"></script>
+<script src="data/transfers.js"></script>
+<script src="data/tif_summary.js"></script>
+<script src="data/data_manifest.js"></script>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script>
+/* ---------- Tiny helpers ---------- */
+const $ = id => document.getElementById(id);
+const fmtMoney = n => n==null||isNaN(n) ? '' :
+  '$'+Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- Build the unified row list (projects + financial transfers) ---------- */
+function buildRows(){
+  const rows = [];
+  // Project rows (RDA & IGA) — these are the geocoded, project-level records
+  for (const p of TIF_PROJECTS) {
+    rows.push({
+      tif_district: p.tif_district,
+      year        : p.year,
+      kind        : p.kind,                 // 'RDA' or 'IGA'
+      kind_label  : p.kind,
+      name        : p.name,
+      partner     : p.partner || p.developer || '',
+      address     : p.address,
+      amount      : p.approved_amount,
+      outside     : p.outside_funding_tif,   // true/false/null
+      leaves      : !!p.money_leaves_district,
+      desc        : p.description,
+      lat         : p.lat, lon: p.lon,
+      tif_is_active: p.tif_is_active,
+      boundary_status    : p.boundary_status,        // inside / adjacent / outside / unknown
+      boundary_distance_m: p.boundary_distance_m,    // meters (positive scalar) or null
+      _source     : 'project',
+    });
+  }
+  // Financial transfer rows (annual report cash-flow lines)
+  for (const t of TIF_TRANSFERS) {
+    // skip project-level ones we already have above
+    if (t.source && t.source.includes('RDA & IGA Projects dataset')) continue;
+    rows.push({
+      tif_district: t.tif_district,
+      year        : t.year,
+      kind        : 'Financial transfer',
+      kind_label  : 'Transfer',
+      name        : t.category,
+      partner     : '',
+      address     : '',
+      amount      : t.amount,
+      outside     : null,
+      leaves      : true,
+      desc        : t.source,
+      lat         : null, lon: null,
+      _source     : 'transfer',
+    });
+  }
+  return rows;
+}
+const ALL_ROWS = buildRows();
+
+/* ---------- District -> aggregate lookup ---------- */
+const SUMMARY_BY_DISTRICT = Object.fromEntries(TIF_SUMMARY.map(s => [s.tif_district, s]));
+
+/* ---------- Map ---------- */
+const map = L.map('map', { preferCanvas:true }).setView([41.8781, -87.6298], 11);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution:'&copy; OpenStreetMap &copy; CartoDB',
+  maxZoom: 19, subdomains:'abcd'
+}).addTo(map);
+
+const COLOR = { active:'#2980b9', expired:'#bdc3c7', selected:'#f39c12',
+                iga:'#9b59b6', rda:'#e67e22', geoOut:'#c0392b', adjacent:'#f1c40f' };
+const styleFor = (feat, selected) => {
+  const active = feat.properties.is_active;
+  return {
+    color      : selected ? '#000'         : (active ? '#2c3e50' : '#7f8c8d'),
+    weight     : selected ? 3              : 1.2,
+    fillColor  : selected ? COLOR.selected : (active ? COLOR.active : COLOR.expired),
+    fillOpacity: selected ? 0.55           : (active ? 0.18 : 0.06),
+    dashArray  : active   ? ''             : '4 3',
+  };
+};
+
+let selectedFeat = null;
+let projectLayer = L.layerGroup().addTo(map);
+let connectorLayer = L.layerGroup().addTo(map);
+
+const tifLayer = L.geoJSON(TIF_BOUNDARIES, {
+  style: f => styleFor(f, false),
+  onEachFeature: (feat, layer) => {
+    layer.on({
+      mouseover: e => e.target.setStyle({ weight: 2.5, fillOpacity: (feat===selectedFeat?0.55:0.32) }),
+      mouseout : e => tifLayer.resetStyle(e.target),
+      click    : () => selectDistrict(feat),
+    });
+    const p = feat.properties;
+    layer.bindTooltip(`<b>${esc(p.name)}</b><br>${p.is_active?'Active':'Expired'} · ${esc(p.tif_number)}<br>${p.approval} → ${p.expiration||'—'}`, {sticky:true});
+  }
+}).addTo(map);
+
+function selectDistrict(feat){
+  selectedFeat = feat;
+  tifLayer.eachLayer(l => tifLayer.resetStyle(l));
+  tifLayer.eachLayer(l => { if (l.feature === feat) l.setStyle(styleFor(feat, true)); });
+  const name = feat.properties.name;
+  // Update side panel
+  renderSidePanel(name);
+  // Filter table to this district
+  $('fltDistrict').value = name;
+  applyFilters();
+  // Draw project markers for projects funded by this TIF that have money leaving the district
+  drawProjectsFor(name, feat);
+}
+
+function clearMarkers(){ projectLayer.clearLayers(); connectorLayer.clearLayers(); }
+
+function drawProjectsFor(name, feat){
+  clearMarkers();
+  const minY=+$('yrMin').value, maxY=+$('yrMax').value;
+  const mapDist = $('mapDist').value;        // any | le25 | le50 | le100 | gt100
+  const mapType = $('mapType').value;        // all | IGA | RDA | IGA-CPS | IGA-PD | IGA-OTHER
+  const mapGeo  = $('mapGeo').value;         // leaves | outside_only | all_in_tif
+
+  function passDist(p){
+    if (mapDist === 'any')   return true;
+    if (p.boundary_distance_m == null) return false;
+    const d = p.boundary_distance_m;
+    if (mapDist === 'le25')  return d <= 25;
+    if (mapDist === 'le50')  return d <= 50;
+    if (mapDist === 'le100') return d <= 100;
+    if (mapDist === 'gt100') return d > 100;
+    return true;
+  }
+  function passType(p){
+    if (mapType === 'all') return true;
+    if (mapType === 'IGA') return p.kind === 'IGA';
+    if (mapType === 'RDA') return p.kind === 'RDA';
+    if (mapType === 'IGA-CPS')   return p.kind === 'IGA' && p.partner === 'CPS';
+    if (mapType === 'IGA-PD')    return p.kind === 'IGA' && p.partner === 'Park District';
+    if (mapType === 'IGA-OTHER') return p.kind === 'IGA' && p.partner !== 'CPS' && p.partner !== 'Park District';
+    return true;
+  }
+  function passGeo(p){
+    if (mapGeo === 'leaves')       return p.money_leaves_district;
+    if (mapGeo === 'outside_only') return p.outside_funding_tif === true;
+    if (mapGeo === 'all_in_tif')   return true;
+    return true;
+  }
+
+  const projects = TIF_PROJECTS.filter(p =>
+    p.tif_district === name &&
+    p.year >= minY && p.year <= maxY &&
+    p.lat != null && p.lon != null &&
+    passGeo(p) && passDist(p) && passType(p)
+  );
+  // centroid of the selected polygon for "connector" lines, plus tight fit-to-bounds
+  let center = null;
+  try {
+    const polyLayer = L.geoJSON(feat);
+    const bounds    = polyLayer.getBounds();
+    center = bounds.getCenter();
+    // Extend bounds to include any markers we're about to draw, so out-of-district
+    // projects remain visible. If no markers, we still get a snug polygon fit.
+    for (const p of projects) bounds.extend([p.lat, p.lon]);
+    // Pixel padding (not fractional .pad()) keeps the fit tight on wide screens,
+    // and a maxZoom prevents over-zooming on tiny districts.
+    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 15, animate: true });
+  } catch(e){}
+  for (const p of projects) {
+    // Boundary-adjacent (within 25 m of the TIF edge) takes priority — these are essentially
+    // on the line and visually flagged in gold so the user knows the in/out call is noise.
+    const isAdjacent = p.boundary_status === 'adjacent';
+    const color = isAdjacent             ? COLOR.adjacent :
+                  p.outside_funding_tif  ? COLOR.geoOut   :
+                  (p.kind === 'IGA'      ? COLOR.iga      : COLOR.rda);
+    const ring = L.circleMarker([p.lat, p.lon], {
+      radius: Math.min(18, Math.max(5, Math.sqrt((p.approved_amount||0)/50000))),
+      fillColor: color, color:'#000',
+      weight: (isAdjacent || p.outside_funding_tif) ? 2 : 1,
+      fillOpacity:0.82
+    });
+    const desc = p.description || '';
+    const trunc = desc.length > 320 ? desc.slice(0,320) + '…' : desc;
+    // Boundary-status line — explicit, so a TIF-savvy reader can audit the classification
+    let bStatus;
+    if (p.boundary_status === 'adjacent') {
+      const side = p.outside_funding_tif ? 'just OUTSIDE' : 'just INSIDE';
+      bStatus = `<b style="color:#b9770e">⚠ Boundary-adjacent</b> — ${side} the funding TIF by <b>${p.boundary_distance_m} m</b> (within geocoder noise; treat in/out call as uncertain)`;
+    } else if (p.boundary_status === 'outside') {
+      bStatus = `<b style="color:#c0392b">Outside funding TIF</b> — ${p.boundary_distance_m} m from the boundary`;
+    } else if (p.boundary_status === 'inside') {
+      bStatus = `Inside funding TIF — ${p.boundary_distance_m} m from the nearest boundary`;
+    } else {
+      bStatus = `<i>In/out unknown — no polygon available for this TIF</i>`;
+    }
+    ring.bindPopup(`
+      <h3>${esc(p.name)}</h3>
+      <div class="meta">${esc(p.kind)} · ${esc(p.year)} · ${esc(p.tif_district)} TIF</div>
+      <div class="amt">${fmtMoney(p.approved_amount)} ${p.approved_amount_total!==p.approved_amount?`<span class="meta">(of $${(p.approved_amount_total).toLocaleString()} total — co-funded TIFs)</span>`:''}</div>
+      <div class="meta">📍 ${esc(p.address)}${p.community_area?` · ${esc(p.community_area)}`:''}</div>
+      <div class="meta">${bStatus}${p.kind==='IGA'?` · Partner: <b>${esc(p.partner)}</b>`:''}</div>
+      <div style="margin-top:6px">${esc(trunc)}</div>
+    `);
+    ring.bindTooltip(`${esc(p.name)} — ${fmtMoney(p.approved_amount)}${isAdjacent ? ' · boundary-adjacent ('+p.boundary_distance_m+' m)' : ''}`);
+    ring.addTo(projectLayer);
+    // dashed connector line from district centroid to project, only for clearly-outside
+    if (center && p.outside_funding_tif && !isAdjacent) {
+      L.polyline([center, [p.lat, p.lon]], { color: color, weight: 1.2, dashArray:'4 4', opacity:0.6 })
+       .addTo(connectorLayer);
+    }
+  }
+  // Build a human-readable filter string for the count row
+  const filterBits = [];
+  if (mapGeo === 'leaves')       filterBits.push('money leaves the district');
+  if (mapGeo === 'outside_only') filterBits.push('physically outside the TIF polygon');
+  if (mapGeo === 'all_in_tif')   filterBits.push('all funded projects');
+  if (mapType !== 'all') {
+    filterBits.push({
+      'IGA':'IGAs only','RDA':'RDAs only',
+      'IGA-CPS':'IGAs to CPS only','IGA-PD':'IGAs to Park District only',
+      'IGA-OTHER':'IGAs to other agencies only'
+    }[mapType]);
+  }
+  if (mapDist !== 'any') {
+    filterBits.push({
+      'le25':'within 25 m of boundary','le50':'within 50 m of boundary',
+      'le100':'within 100 m of boundary','gt100':'more than 100 m from boundary'
+    }[mapDist]);
+  }
+  $('countRow').textContent =
+    `${projects.length} project marker${projects.length===1?'':'s'} on the map for “${name}”` +
+    ` (${minY}–${maxY}) · ${filterBits.join(' · ')}`;
+}
+
+function renderSidePanel(name){
+  const s = SUMMARY_BY_DISTRICT[name] || {};
+  // Live count of boundary-adjacent projects for this district
+  const adjCount   = TIF_PROJECTS.filter(p => p.tif_district === name && p.boundary_status === 'adjacent').length;
+  const adjDollars = TIF_PROJECTS.filter(p => p.tif_district === name && p.boundary_status === 'adjacent')
+                                 .reduce((a,p)=>a + (p.approved_amount||0), 0);
+  $('selPanel').innerHTML = `
+    <div class="tif-name">${esc(name)} <span class="badge">${esc(s.tif_number||'')}</span></div>
+    <div class="badges">
+      <span class="badge">Latest fund balance: <b>${fmtMoney(s.latest_fund_balance||0)}</b> (${s.latest_year||'—'})</span>
+      <span class="badge">Years covered: ${esc(s.years_covered||'—')}</span>
+    </div>
+    <div class="stat"><span class="lbl">Property-tax increment (sum)</span>
+      <span class="val">${fmtMoney(s.total_property_tax_increment||0)}</span></div>
+    <div class="stat"><span class="lbl">Total expenditures (sum)</span>
+      <span class="val">${fmtMoney(s.total_expenditure||0)}</span></div>
+    <div class="stat"><span class="lbl">Declared surplus (sum)</span>
+      <span class="val">${fmtMoney(s.total_distribution_of_surplus||0)}</span></div>
+    <div class="stat"><span class="lbl">Paid to CPS (sum)</span>
+      <span class="val">${fmtMoney(s.total_transfer_to_school_districts||0)}</span></div>
+    <div class="stat"><span class="lbl">Paid to Chicago Public Library</span>
+      <span class="val">${fmtMoney(s.total_transfer_to_library_districts||0)}</span></div>
+    <div class="stat"><span class="lbl">Inter-governmental projects (#/$)</span>
+      <span class="val">${s.iga_count||0} · ${fmtMoney(s.iga_dollars||0)}</span></div>
+    <div class="stat"><span class="lbl">Geographically out-of-district (#/$)</span>
+      <span class="val">${s.geographic_out_count||0} · ${fmtMoney(s.geographic_out_dollars||0)}</span></div>
+    <div class="stat"><span class="lbl" title="Within 25 m of the TIF boundary — within geocoder noise">Boundary-adjacent (#/$)</span>
+      <span class="val">${adjCount} · ${fmtMoney(adjDollars)}</span></div>
+    <div class="stat"><span class="lbl">In-district RDA projects (#/$)</span>
+      <span class="val">${s.rda_count||0} · ${fmtMoney(s.rda_dollars||0)}</span></div>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--iga)"></span>IGA</span>
+      <span><span class="swatch" style="background:var(--rda)"></span>RDA</span>
+      <span><span class="swatch" style="background:var(--geo-out);border:2px solid #000"></span>Outside (&gt;25m)</span>
+      <span><span class="swatch" style="background:var(--adjacent);border:2px solid #000"></span>Adjacent (&lt;25m)</span>
+    </div>
+    <div class="help">Marker radius scales with dollar amount. Dashed lines connect the district centroid only
+      to clearly-outside projects (&gt;25m). Gold "boundary-adjacent" markers are within geocoder noise
+      of the TIF edge — click them for exact distance.</div>
+  `;
+}
+
+/* ---------- Filters / Table ---------- */
+const districts = Array.from(new Set(TIF_BOUNDARIES.features.map(f => f.properties.name))).sort();
+const dd = $('fltDistrict');
+for (const d of districts) {
+  const o = document.createElement('option'); o.value = d; o.textContent = d; dd.appendChild(o);
+}
+
+let sortKey = 'amount', sortDir = -1;
+function applyFilters(){
+  const district = $('fltDistrict').value;
+  const kind     = $('fltKind').value;
+  const outside  = $('fltOutside').value;
+  const minY     = +$('yrMin').value;
+  const maxY     = +$('yrMax').value;
+  const q        = $('fltText').value.trim().toLowerCase();
+  let rows = ALL_ROWS.filter(r => {
+    if (district && r.tif_district !== district) return false;
+    if (kind && r.kind !== kind) return false;
+    if (outside === 'outside'       && r.outside !== true) return false;
+    if (outside === 'clear_outside' && !(r.outside === true && r.boundary_status === 'outside')) return false;
+    if (outside === 'adjacent'      && r.boundary_status !== 'adjacent') return false;
+    if (outside === 'leaves'        && !r.leaves) return false;
+    if (r.year && (r.year < minY || r.year > maxY))  return false;
+    if (q) {
+      const blob = [r.tif_district,r.name,r.partner,r.address,r.desc].join(' ').toLowerCase();
+      if (!blob.includes(q)) return false;
+    }
+    return true;
+  });
+  rows.sort((a,b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    if (va==null && vb==null) return 0;
+    if (va==null) return 1;
+    if (vb==null) return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va-vb)*sortDir;
+    return String(va).localeCompare(String(vb))*sortDir;
+  });
+  renderTable(rows);
+  if (!selectedFeat) {
+    $('countRow').textContent =
+      `Showing ${rows.length.toLocaleString()} row${rows.length===1?'':'s'} `+
+      `(of ${ALL_ROWS.length.toLocaleString()} total) · years ${minY}–${maxY}`;
+  }
+}
+
+function renderTable(rows){
+  const tbody = $('tbody');
+  // simple windowing: cap at 1500 rows to keep DOM snappy
+  const cap = 1500;
+  const slice = rows.slice(0, cap);
+  const html = slice.map(r => {
+    const kindCls = r.kind==='IGA' ? 'iga' : r.kind==='RDA' ? 'rda' : 'transfer';
+    // Outside-or-adjacent badge with distance, so a TIF-savvy reader can audit boundary calls
+    let outsideBadge;
+    if (r.kind === 'Financial transfer') {
+      outsideBadge = '<span class="badge">n/a</span>';
+    } else if (r.boundary_status === 'adjacent') {
+      const side = r.outside ? 'outside' : 'inside';
+      outsideBadge = `<span class="pill adjacent" title="Within 25 m of the funding TIF boundary — in/out classification is within geocoder noise">Adjacent (${r.boundary_distance_m} m ${side})</span>`;
+    } else if (r.boundary_status === 'outside') {
+      outsideBadge = `<span class="pill outside" title="${r.boundary_distance_m} m beyond the funding TIF boundary">Outside (${r.boundary_distance_m} m)</span>`;
+    } else if (r.boundary_status === 'inside') {
+      outsideBadge = `Inside <span class="meta" style="color:#888;font-size:11px">(${r.boundary_distance_m} m from edge)</span>`;
+    } else {
+      outsideBadge = '<span class="badge">unknown</span>';
+    }
+    return `<tr>
+      <td>${esc(r.tif_district)}</td>
+      <td>${esc(r.year||'')}</td>
+      <td class="kind"><span class="pill ${kindCls}">${esc(r.kind_label||r.kind)}</span></td>
+      <td title="${esc(r.desc||'')}">${esc(r.name||'')}</td>
+      <td>${esc(r.partner||'')}</td>
+      <td>${esc(r.address||'')}</td>
+      <td class="amount">${fmtMoney(r.amount)}</td>
+      <td>${outsideBadge}</td>
+    </tr>`;
+  }).join('');
+  tbody.innerHTML = html + (rows.length>cap ? `<tr><td colspan="8" style="text-align:center;color:#888;padding:10px">Showing first ${cap.toLocaleString()} of ${rows.length.toLocaleString()} rows — narrow your filters to see more.</td></tr>`:'');
+}
+
+document.querySelectorAll('th[data-k]').forEach(th => {
+  th.addEventListener('click', () => {
+    const k = th.dataset.k;
+    if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = (k==='amount'||k==='year')?-1:1; }
+    document.querySelectorAll('th .arrow').forEach(a => a.textContent='');
+    th.querySelector('.arrow').textContent = sortDir>0 ? '▲' : '▼';
+    applyFilters();
+  });
+});
+
+['fltDistrict','fltKind','fltOutside','fltText'].forEach(id => $(id).addEventListener('input', applyFilters));
+// Map-only filters — re-render markers without touching the table
+['mapDist','mapType','mapGeo'].forEach(id => $(id).addEventListener('change', () => {
+  if (selectedFeat) drawProjectsFor(selectedFeat.properties.name, selectedFeat);
+}));
+['yrMin','yrMax'].forEach(id => $(id).addEventListener('input', () => {
+  let mn=+$('yrMin').value, mx=+$('yrMax').value;
+  if (mn>mx) { if (id==='yrMin') $('yrMax').value=mn; else $('yrMin').value=mx; }
+  $('yrMinLbl').textContent=$('yrMin').value;
+  $('yrMaxLbl').textContent=$('yrMax').value;
+  applyFilters();
+  if (selectedFeat) drawProjectsFor(selectedFeat.properties.name, selectedFeat);
+}));
+
+$('resetBtn').addEventListener('click', () => {
+  ['fltDistrict','fltKind','fltOutside','fltText'].forEach(id => $(id).value = '');
+  $('yrMin').value = 2016; $('yrMax').value = 2026;
+  $('yrMinLbl').textContent='2016'; $('yrMaxLbl').textContent='2026';
+  // Reset map-only filters back to defaults too
+  $('mapDist').value = 'any';
+  $('mapType').value = 'all';
+  $('mapGeo').value  = 'leaves';
+  selectedFeat = null;
+  tifLayer.eachLayer(l => tifLayer.resetStyle(l));
+  clearMarkers();
+  $('selPanel').innerHTML = `<div class="tif-name" id="selName">— Click a TIF on the map —</div>`;
+  applyFilters();
+  map.setView([41.8781, -87.6298], 11);
+});
+
+$('csvBtn').addEventListener('click', () => {
+  // Re-run filter, export visible rows
+  const district = $('fltDistrict').value, kind=$('fltKind').value, outside=$('fltOutside').value;
+  const minY=+$('yrMin').value, maxY=+$('yrMax').value, q=$('fltText').value.trim().toLowerCase();
+  const rows = ALL_ROWS.filter(r => {
+    if (district && r.tif_district !== district) return false;
+    if (kind && r.kind !== kind) return false;
+    if (outside === 'outside' && r.outside !== true) return false;
+    if (outside === 'leaves'  && !r.leaves) return false;
+    if (r.year && (r.year < minY || r.year > maxY)) return false;
+    if (q) { const blob=[r.tif_district,r.name,r.partner,r.address,r.desc].join(' ').toLowerCase(); if(!blob.includes(q)) return false; }
+    return true;
+  });
+  const cols = ['tif_district','year','kind','name','partner','address','amount','outside'];
+  const csv = [cols.join(',')].concat(rows.map(r => cols.map(c => {
+    let v = r[c]; if (v==null) v=''; v = String(v).replace(/"/g,'""');
+    return /[,"\n]/.test(v) ? `"${v}"` : v;
+  }).join(','))).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'chicago_tif_filtered.csv'; a.click();
+});
+
+/* About / Caveats modal */
+function openModal(mode){
+  const m = TIF_MANIFEST;
+  const sourcesHtml = '<ul style="margin:6px 0 0;padding-left:20px">' +
+    m.sources.map(s => `<li><b>${esc(s.name)}</b> <code>(${esc(s.id)})</code> — ${esc(s.use)}<br><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a></li>`).join('') + '</ul>';
+  const defsHtml = '<dl style="margin:6px 0">' +
+    Object.entries(m.definitions).map(([k,v]) => `<dt style="font-weight:600;margin-top:8px">${esc(k)}</dt><dd style="margin:2px 0 0 0;color:#444">${esc(v)}</dd>`).join('') + '</dl>';
+  const caveatsHtml = (m.caveats || []).map((c, i) => `
+    <div style="background:#fff8e1;border:1px solid #f1c40f;border-left:4px solid #c0392b;border-radius:4px;padding:10px 14px;margin:8px 0">
+      <div style="font-weight:700;color:#c0392b;margin-bottom:4px">⚠ ${i+1}. ${esc(c.title)}</div>
+      <div style="color:#333">${esc(c.detail)}</div>
+    </div>`).join('');
+  const refDash = m.reference_dashboards.map(r => `<li><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.name)}</a></li>`).join('');
+  let body, title;
+  if (mode === 'caveats') {
+    title = '⚠ Caveats — please read before citing these numbers';
+    body  = `
+      <p>This dashboard pulls directly from the City of Chicago Data Portal. The data is accurate as published,
+         but several aspects of how TIF data is reported are easy to misinterpret. Please skim these
+         <b>${(m.caveats||[]).length} caveats</b> before sharing figures from this dashboard:</p>
+      ${caveatsHtml}
+      <p style="margin-top:14px"><b>Reference dashboards</b> for cross-checking specific numbers:</p>
+      <ul>${refDash}</ul>`;
+  } else {
+    title = 'About the data';
+    body = `
+      <p><b>Generated:</b> ${esc(m.generated_utc)}<br>
+         <b>Years covered (financial reports):</b> ${m.time_window.earliest_year_in_financial_data}–${m.time_window.latest_year_in_financial_data}<br>
+         <b>Project approvals:</b> ${esc(m.time_window.project_approval_date_range)}</p>
+      <p><b>Record counts:</b></p>
+      <ul>${Object.entries(m.counts).map(([k,v]) => `<li>${esc(k)}: <b>${v.toLocaleString()}</b></li>`).join('')}</ul>
+      <p><b>Sources:</b></p>${sourcesHtml}
+      <p style="margin-top:14px"><b>Definitions:</b></p>${defsHtml}
+      <p style="margin-top:14px"><b>Reference dashboards:</b></p>
+      <ul>${refDash}</ul>
+      <p style="margin-top:14px"><a href="#" id="jumpCaveats" style="color:#c0392b;font-weight:600">→ See the ${(m.caveats||[]).length} important caveats</a></p>`;
+  }
+  $('modalTitle').textContent = title;
+  $('modalBody').innerHTML = body;
+  $('modal').style.display = 'block';
+  // Bind inner link
+  const jc = $('jumpCaveats'); if (jc) jc.addEventListener('click', e => { e.preventDefault(); openModal('caveats'); });
+}
+$('aboutLink').addEventListener('click',   e => { e.preventDefault(); openModal('about'); });
+$('caveatsLink').addEventListener('click', e => { e.preventDefault(); openModal('caveats'); });
+$('modalClose').addEventListener('click', () => $('modal').style.display = 'none');
+$('modalAck').addEventListener('click',   () => { $('modal').style.display = 'none';
+  try { localStorage.setItem('tifCaveatsAck','1'); } catch(_){} });
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal') $('modal').style.display = 'none'; });
+
+// Auto-open caveats on first visit (per-browser, dismissable)
+try {
+  if (!localStorage.getItem('tifCaveatsAck')) {
+    setTimeout(() => openModal('caveats'), 400);
+  }
+} catch(_) { /* localStorage may be blocked on file:// in some browsers — that's fine */ }
+
+/* Pane-size toggle: lets the user shrink the map or grow the data table */
+function setPaneSize(size){
+  const layout = document.querySelector('.layout');
+  layout.classList.remove('table-expanded','map-expanded');
+  if (size === 'table') layout.classList.add('table-expanded');
+  if (size === 'map')   layout.classList.add('map-expanded');
+  document.querySelectorAll('.size-btn').forEach(b => b.classList.toggle('active', b.dataset.size === size));
+  // Leaflet needs to be told the container changed size, otherwise gray tiles appear
+  setTimeout(() => map.invalidateSize(), 250);
+  try { localStorage.setItem('tifPaneSize', size); } catch(_){}
+}
+document.querySelectorAll('.size-btn').forEach(b =>
+  b.addEventListener('click', () => setPaneSize(b.dataset.size)));
+try {
+  const saved = localStorage.getItem('tifPaneSize');
+  if (saved && ['default','table','map'].includes(saved)) setPaneSize(saved);
+} catch(_){}
+// Re-tell Leaflet about container size on window resize too
+window.addEventListener('resize', () => map.invalidateSize());
+
+/* Initial render */
+applyFilters();
+</script>
+</body>
+</html>

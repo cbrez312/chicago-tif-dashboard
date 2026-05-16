@@ -1,0 +1,99 @@
+{
+  "generated_utc": "2026-05-16T13:13:49Z",
+  "sources": [
+    {
+      "id": "eejr-xtfb",
+      "name": "Boundaries - Tax Increment Financing Districts",
+      "url": "https://data.cityofchicago.org/d/eejr-xtfb",
+      "use": "TIF district polygons (active TIFs)"
+    },
+    {
+      "id": "mex4-ppfc",
+      "name": "TIF Funded RDA and IGA Projects",
+      "url": "https://data.cityofchicago.org/d/mex4-ppfc",
+      "use": "Project-level money movement with addresses, lat/lon, RDA/IGA classification"
+    },
+    {
+      "id": "72uz-ikdv",
+      "name": "TIF Annual Report - Projects",
+      "url": "https://data.cityofchicago.org/d/72uz-ikdv",
+      "use": "Per-year project payments and statuses"
+    },
+    {
+      "id": "qm7s-3ctt",
+      "name": "TIF Annual Report - Special Tax Allocation Fund Analysis",
+      "url": "https://data.cityofchicago.org/d/qm7s-3ctt",
+      "use": "Per-year fund balance, surplus distributions, transfers"
+    },
+    {
+      "id": "umwj-yc4m",
+      "name": "TIF Annual Report - Itemized List of Expenditures",
+      "url": "https://data.cityofchicago.org/d/umwj-yc4m",
+      "use": "Per-year expenditure categories incl. transfers to school/library districts"
+    }
+  ],
+  "reference_dashboards": [
+    {
+      "name": "Chicago Office of Inspector General - TIF Cash Flows",
+      "url": "https://igchicago.org/information-portal/data-dashboards/chicago-tif-districts-cash-flows/"
+    },
+    {
+      "name": "City of Chicago TIF Portal",
+      "url": "https://webapps1.chicago.gov/ChicagoTif/"
+    }
+  ],
+  "definitions": {
+    "IGA (Intergovernmental Agreement)": "TIF money paid to another unit of local government (CPS, Park District, City Colleges, CTA, Public Library, CHA, etc.) under an inter-agency agreement.",
+    "RDA (Redevelopment Agreement)": "TIF money paid to a private developer under a City Council-approved RDA.",
+    "Declared surplus": "Money the TIF formally returns to the County collector, which distributes it pro-rata to overlapping taxing bodies (city, county, CPS, parks, library, MWRD, etc.).",
+    "Porting (TIF-to-TIF transfer)": "Under 65 ILCS 5/11-74.4-4(q), surplus from one TIF can be transferred to a contiguous TIF. The city does not publish a single dedicated dataset; in the reports this typically shows up as a project expenditure in the receiving TIF after an inter-TIF transfer.",
+    "Transfer to municipal corporate fund": "TIF dollars moved to the city's general corporate fund (rare; subject to legal limits).",
+    "Out-of-district project": "A TIF-funded project whose physical address (lat/lon) does NOT fall inside the funding TIF district polygon. Often eligible because the project is a \"contiguous parcel\" or a qualifying intergovernmental partner site."
+  },
+  "caveats": [
+    {
+      "title": "approved_amount is the MAXIMUM approved subsidy, not dollars disbursed",
+      "detail": "The \"Amount ($)\" column for RDA and IGA projects shows the maximum subsidy approved by the Community Development Commission, not what has actually been paid out. Disbursements happen over multiple years and are reported separately in the TIF Annual Report - Projects dataset (72uz-ikdv) which contains current_year_payments per project per year. Those per-year payments are NOT currently rolled into the project tooltips here. If a tooltip shows $98M but a TIF reader knows only ~$30M has been disbursed so far, this is why."
+    },
+    {
+      "title": "Multi-TIF (co-funded) projects are split evenly across funding TIFs",
+      "detail": "24 records in the RDA/IGA Projects dataset list multiple funding TIFs joined by commas. The city does not publish the per-TIF share. The dashboard shows one row per funding TIF with the approved amount divided evenly. Each row carries a co_funded_with array preserving the other TIFs involved."
+    },
+    {
+      "title": "CDC date is the approval date, not the disbursement date",
+      "detail": "The \"Year\" column derives from cdc_date \u2014 the date the Community Development Commission approved the project. Actual TIF dollars typically flow in years following approval. Year-range filtering uses approval year."
+    },
+    {
+      "title": "Recently-expired TIFs are included from the deprecated April-2023 boundary set",
+      "detail": "The current Boundaries dataset (eejr-xtfb) lists only 100 active TIFs. To show post-2016 activity for recently-expired districts (Wilson Yard, Western Avenue North/South, Portage Park, etc.), the dashboard also loads the most recent deprecated boundary set (di8g-4wjz, 130 features). Long-expired TIFs with no polygon in either set still appear in the table but not on the map."
+    },
+    {
+      "title": "Boundary-adjacent projects (within 25m of a TIF edge) are flagged in gold",
+      "detail": "A project whose geocoded lat/lon is within 25 meters of the funding TIF boundary is shown in GOLD rather than red (outside) or kind-color (inside). 25m is roughly the width of a Chicago street and is within typical geocoder error \u2014 for these projects the inside/outside classification is essentially noise. Each project popup shows the exact distance from the boundary, and boundary distance is computed using the city's FULL-RESOLUTION polygon, not the simplified display polygon, so the distance is faithful to the published city geometry."
+    },
+    {
+      "title": "IGAs to CTA capital projects dwarf everything else",
+      "detail": "The Red Line Extension TIF and the Red and Purple Modernization (RPM) TIF were created specifically to fund CTA capital projects via single, very large intergovernmental agreements ($959M and $622M respectively). These are real and verifiable but will skew district-level aggregates and totals."
+    },
+    {
+      "title": "\"Porting\" (inter-TIF transfers under 65 ILCS 5/11-74.4-4(q)) is not a discrete dataset",
+      "detail": "The city does not publish a single TIF-to-TIF transfer dataset. Where money is moved from one TIF to a contiguous TIF, it generally appears as a project expenditure in the RECEIVING TIF rather than as a transfer line in the sending TIF. A complete porting view would require manually reconciling annual reports."
+    }
+  ],
+  "counts": {
+    "tif_districts": 132,
+    "projects_loaded": 308,
+    "projects_geographic_out": 33,
+    "projects_boundary_adjacent": 91,
+    "projects_iga": 160,
+    "projects_money_leaves": 177,
+    "transfer_records": 660,
+    "tif_year_records": 1073
+  },
+  "boundary_adjacency_threshold_m": 25,
+  "time_window": {
+    "earliest_year_in_financial_data": 2017,
+    "latest_year_in_financial_data": 2024,
+    "project_approval_date_range": "cdc_date >= 2016-01-01 through latest available"
+  }
+}
