@@ -142,7 +142,7 @@
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
         <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">
           Distance from TIF border
-          <select id="mapDist" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit">
+          <select id="mapDist" autocomplete="off" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit">
             <option value="any">Any distance</option>
             <option value="le25">≤ 25 m  (boundary-adjacent only)</option>
             <option value="le50">≤ 50 m</option>
@@ -152,7 +152,7 @@
         </label>
         <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">
           Transaction type
-          <select id="mapType" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit">
+          <select id="mapType" autocomplete="off" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit">
             <option value="all">All types</option>
             <option value="IGA">Only IGA (inter-governmental)</option>
             <option value="RDA">Only RDA (private redevelopment)</option>
@@ -163,7 +163,7 @@
         </label>
         <label style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)">
           Geographic relation
-          <select id="mapGeo" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit">
+          <select id="mapGeo" autocomplete="off" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font:inherit">
             <option value="leaves">Money leaves district (geo OR inter-gov)</option>
             <option value="outside_only">Only projects outside the TIF polygon</option>
             <option value="all_in_tif">All projects funded by this TIF (incl. in-district private RDAs)</option>
@@ -200,10 +200,10 @@
     </div>
     <div class="controls">
       <label>TIF district
-        <select id="fltDistrict"><option value="">All districts</option></select>
+        <select id="fltDistrict" autocomplete="off"><option value="">All districts</option></select>
       </label>
       <label>Transfer / project type
-        <select id="fltKind">
+        <select id="fltKind" autocomplete="off">
           <option value="">All types</option>
           <option value="RDA">RDA (redevelopment)</option>
           <option value="IGA">IGA (intergovernmental)</option>
@@ -211,7 +211,7 @@
         </select>
       </label>
       <label>Out-of-district only
-        <select id="fltOutside">
+        <select id="fltOutside" autocomplete="off">
           <option value="">No filter</option>
           <option value="outside">Physically outside funding TIF (any distance)</option>
           <option value="clear_outside">Clearly outside (&gt;25 m from boundary)</option>
@@ -220,14 +220,14 @@
         </select>
       </label>
       <label>Year range
-        <input type="range" id="yrMin" min="2016" max="2026" step="1" value="2016">
+        <input type="range" id="yrMin" min="2016" max="2026" step="1" value="2016" autocomplete="off">
       </label>
       <label>through
-        <input type="range" id="yrMax" min="2016" max="2026" step="1" value="2026">
+        <input type="range" id="yrMax" min="2016" max="2026" step="1" value="2026" autocomplete="off">
       </label>
       <span class="yrs"><span id="yrMinLbl">2016</span>–<span id="yrMaxLbl">2026</span></span>
       <label>Search
-        <input id="fltText" type="search" placeholder="project, developer, address, partner…">
+        <input id="fltText" type="search" autocomplete="off" placeholder="project, developer, address, partner…">
       </label>
       <button class="secondary" id="resetBtn">Reset filters</button>
       <button id="csvBtn">Export CSV</button>
@@ -686,14 +686,7 @@ document.querySelectorAll('th[data-k]').forEach(th => {
 }));
 
 $('resetBtn').addEventListener('click', () => {
-  ['fltDistrict','fltKind','fltOutside','fltText'].forEach(id => $(id).value = '');
-  $('yrMin').value = 2016; $('yrMax').value = 2026;
-  $('yrMinLbl').textContent='2016'; $('yrMaxLbl').textContent='2026';
-  $('titleYears').textContent = '(2016–2026)';
-  // Reset map-only filters back to defaults too
-  $('mapDist').value = 'any';
-  $('mapType').value = 'all';
-  $('mapGeo').value  = 'leaves';
+  resetAllFilters();
   selectedFeat = null;
   lastMapMarkerCount = null;          // clear so count row reverts to table-only mode
   lastMapFilterBits  = '';
@@ -804,7 +797,20 @@ try {
 // Re-tell Leaflet about container size on window resize too
 window.addEventListener('resize', () => map.invalidateSize());
 
-/* Initial render */
+/* Initial render — explicitly reset every filter to its default. Some browsers
+   (Firefox, Safari) auto-restore form values across reloads which would leave
+   the year sliders, dropdowns, and search box showing stale state. We force
+   them to defaults here so a hard refresh always returns to a clean view. */
+function resetAllFilters(){
+  ['fltDistrict','fltKind','fltOutside','fltText'].forEach(id => $(id).value = '');
+  $('yrMin').value = 2016; $('yrMax').value = 2026;
+  $('yrMinLbl').textContent='2016'; $('yrMaxLbl').textContent='2026';
+  $('titleYears').textContent = '(2016–2026)';
+  $('mapDist').value = 'any';
+  $('mapType').value = 'all';
+  $('mapGeo').value  = 'leaves';
+}
+resetAllFilters();
 applyFilters();
 </script>
 </body>
