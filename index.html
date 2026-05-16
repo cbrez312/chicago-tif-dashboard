@@ -128,8 +128,9 @@
       <button id="modalClose" style="background:none;border:0;font-size:24px;cursor:pointer;color:#666;padding:0 6px">×</button>
     </div>
     <div id="modalBody" style="font-size:13px;line-height:1.55"></div>
-    <div id="modalFooter" style="margin-top:18px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
-      <button class="secondary" id="modalAck" style="padding:7px 14px;background:#fff;color:#111;border:1px solid var(--border);border-radius:4px;cursor:pointer">I understand &amp; want to continue</button>
+    <div id="modalFooter" style="margin-top:18px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px">
+      <span style="font-size:11px;color:#888">Dismissing this dialog (button, ×, or click outside) will stop it from auto-opening on future visits. You can re-open it anytime via the header links.</span>
+      <button class="secondary" id="modalAck" style="padding:7px 14px;background:#fff;color:#111;border:1px solid var(--border);border-radius:4px;cursor:pointer;white-space:nowrap">Got it — don't show again</button>
     </div>
   </div>
 </div>
@@ -763,12 +764,19 @@ function openModal(mode){
   // Bind inner link
   const jc = $('jumpCaveats'); if (jc) jc.addEventListener('click', e => { e.preventDefault(); openModal('caveats'); });
 }
+// Dismissing the modal in ANY way (× button, "I understand", or click outside)
+// counts as "seen" and persists the ack flag in localStorage. This means once
+// a user has viewed the caveats popup once, it won't auto-open on subsequent
+// page loads — even if they dismissed via the × or by clicking outside.
+function closeModal(){
+  $('modal').style.display = 'none';
+  try { localStorage.setItem('tifCaveatsAck','1'); } catch(_){}
+}
 $('aboutLink').addEventListener('click',   e => { e.preventDefault(); openModal('about'); });
 $('caveatsLink').addEventListener('click', e => { e.preventDefault(); openModal('caveats'); });
-$('modalClose').addEventListener('click', () => $('modal').style.display = 'none');
-$('modalAck').addEventListener('click',   () => { $('modal').style.display = 'none';
-  try { localStorage.setItem('tifCaveatsAck','1'); } catch(_){} });
-$('modal').addEventListener('click', e => { if (e.target.id === 'modal') $('modal').style.display = 'none'; });
+$('modalClose').addEventListener('click', closeModal);
+$('modalAck').addEventListener('click',   closeModal);
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 
 // Auto-open caveats on first visit (per-browser, dismissable)
 try {
