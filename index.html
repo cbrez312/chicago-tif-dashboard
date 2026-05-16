@@ -77,6 +77,21 @@
   .pill.iga{background:var(--iga)} .pill.rda{background:var(--rda)} .pill.transfer{background:#34495e}
   .pill.outside{background:var(--geo-out)}
   .pill.adjacent{background:var(--adjacent);color:#000}
+  /* Info-icon tooltip for the per-district stats */
+  .info{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
+    border-radius:50%;background:#bcc8d4;color:#fff;font:bold 10px/1 -apple-system,sans-serif;
+    margin-left:5px;cursor:help;position:relative;vertical-align:middle;user-select:none;
+    transition:background 0.15s}
+  .info:hover{background:var(--accent)}
+  .info::before{content:'i'}
+  .info::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);left:0;
+    background:#1f2c3a;color:#fff;padding:9px 11px;border-radius:5px;font-size:11.5px;
+    line-height:1.45;font-weight:normal;width:240px;white-space:normal;text-align:left;
+    z-index:1000;box-shadow:0 6px 18px rgba(0,0,0,.28);opacity:0;visibility:hidden;
+    transition:opacity 0.15s ease 0.1s,visibility 0.15s ease 0.1s;pointer-events:none}
+  .info:hover::after{opacity:1;visibility:visible}
+  /* If the info icon sits in the rightmost portion of the panel, anchor tooltip to the right */
+  .info.tip-left::after{left:auto;right:0}
   .leaflet-popup-content{font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:280px}
   .leaflet-popup-content h3{margin:0 0 4px;font-size:13px}
   .leaflet-popup-content .meta{color:var(--muted);font-size:11px;margin-bottom:4px}
@@ -482,29 +497,45 @@ function renderSidePanel(name){
   const adjCount   = TIF_PROJECTS.filter(p => p.tif_district === name && p.boundary_status === 'adjacent').length;
   const adjDollars = TIF_PROJECTS.filter(p => p.tif_district === name && p.boundary_status === 'adjacent')
                                  .reduce((a,p)=>a + (p.approved_amount||0), 0);
+  // Plain-English definitions for the TIF-novice user — appear on hover of the ⓘ icon
+  const tip = {
+    fund_balance: 'Unspent money remaining in this TIF\'s Special Tax Allocation Fund at the end of the most recent reporting year. Available for future projects in the district.',
+    years_covered: 'The range of annual report years included in the financial figures below.',
+    increment: '"Increment" is the property-tax revenue this TIF captured over the years covered — the difference between current property taxes and the lower amount that was being collected when the TIF was created. This is money that would otherwise flow to the city, county, schools, parks, etc.',
+    expenditures: 'Total dollars spent from this TIF\'s fund across every category — project costs, transfers, administration, debt service, etc.',
+    surplus: 'Money this TIF formally returned to the County Collector as "surplus." The County then redistributes it pro-rata to the overlapping taxing bodies (city, county, CPS, parks, library, MWRD).',
+    cps: 'Dollars from this TIF paid directly to Chicago Public Schools — typically under intergovernmental agreements for school construction, renovation, or repair.',
+    library: 'Dollars from this TIF paid directly to the Chicago Public Library system — typically for branch construction or renovation.',
+    iga: 'Count and total dollar amount of projects funded under intergovernmental agreements (IGAs) — money sent to another unit of local government (CPS, Park District, CTA, City Colleges, CHA, Library, Cook County) for capital work at their facilities.',
+    geo_out: 'Count and total dollars of projects whose physical address sits more than 25 meters OUTSIDE this TIF\'s boundary. The TIF paid for them, but the project is physically located elsewhere.',
+    adjacent: 'Count and total dollars of projects within 25 meters of the TIF boundary. They\'re close enough to the edge that the inside/outside classification is within geocoder error — shown in GOLD on the map.',
+    rda: 'Count and total dollars of Redevelopment Agreement (RDA) projects with private developers, located clearly inside this TIF (>25 m from the boundary). This is the most traditional TIF use case — money raised within the district spent within the district on private development.',
+  };
+  const ic = (key, leftClass) => `<span class="info ${leftClass||''}" data-tip="${esc(tip[key])}"></span>`;
+
   $('selPanel').innerHTML = `
     <div class="tif-name">${esc(name)} <span class="badge">${esc(s.tif_number||'')}</span></div>
     <div class="badges">
-      <span class="badge">Latest fund balance: <b>${fmtMoney(s.latest_fund_balance||0)}</b> (${s.latest_year||'—'})</span>
-      <span class="badge">Years covered: ${esc(s.years_covered||'—')}</span>
+      <span class="badge">Latest fund balance: <b>${fmtMoney(s.latest_fund_balance||0)}</b> (${s.latest_year||'—'})${ic('fund_balance','tip-left')}</span>
+      <span class="badge">Years covered: ${esc(s.years_covered||'—')}${ic('years_covered','tip-left')}</span>
     </div>
-    <div class="stat"><span class="lbl">Property-tax increment (sum)</span>
+    <div class="stat"><span class="lbl">Property-tax increment (sum)${ic('increment')}</span>
       <span class="val">${fmtMoney(s.total_property_tax_increment||0)}</span></div>
-    <div class="stat"><span class="lbl">Total expenditures (sum)</span>
+    <div class="stat"><span class="lbl">Total expenditures (sum)${ic('expenditures')}</span>
       <span class="val">${fmtMoney(s.total_expenditure||0)}</span></div>
-    <div class="stat"><span class="lbl">Declared surplus (sum)</span>
+    <div class="stat"><span class="lbl">Declared surplus (sum)${ic('surplus')}</span>
       <span class="val">${fmtMoney(s.total_distribution_of_surplus||0)}</span></div>
-    <div class="stat"><span class="lbl">Paid to CPS (sum)</span>
+    <div class="stat"><span class="lbl">Paid to CPS (sum)${ic('cps')}</span>
       <span class="val">${fmtMoney(s.total_transfer_to_school_districts||0)}</span></div>
-    <div class="stat"><span class="lbl">Paid to Chicago Public Library</span>
+    <div class="stat"><span class="lbl">Paid to Chicago Public Library${ic('library')}</span>
       <span class="val">${fmtMoney(s.total_transfer_to_library_districts||0)}</span></div>
-    <div class="stat"><span class="lbl">Inter-governmental projects (#/$)</span>
+    <div class="stat"><span class="lbl">Inter-governmental projects (#/$)${ic('iga')}</span>
       <span class="val">${s.iga_count||0} · ${fmtMoney(s.iga_dollars||0)}</span></div>
-    <div class="stat"><span class="lbl">Geographically out-of-district (#/$)</span>
+    <div class="stat"><span class="lbl">Geographically out-of-district (#/$)${ic('geo_out')}</span>
       <span class="val">${s.geographic_out_count||0} · ${fmtMoney(s.geographic_out_dollars||0)}</span></div>
-    <div class="stat"><span class="lbl" title="Within 25 m of the TIF boundary — within geocoder noise">Boundary-adjacent (#/$)</span>
+    <div class="stat"><span class="lbl">Boundary-adjacent (#/$)${ic('adjacent')}</span>
       <span class="val">${adjCount} · ${fmtMoney(adjDollars)}</span></div>
-    <div class="stat"><span class="lbl">In-district RDA projects (#/$)</span>
+    <div class="stat"><span class="lbl">In-district RDA projects (#/$)${ic('rda')}</span>
       <span class="val">${s.rda_count||0} · ${fmtMoney(s.rda_dollars||0)}</span></div>
     <div class="legend">
       <span><span class="swatch" style="background:var(--iga)"></span>IGA</span>
