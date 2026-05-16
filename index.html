@@ -468,10 +468,13 @@ function drawProjectsFor(name, feat){
       'le100':'within 100 m of boundary','gt100':'more than 100 m from boundary'
     }[mapDist]);
   }
-  $('countRow').textContent =
-    `${projects.length} project marker${projects.length===1?'':'s'} on the map for “${name}”` +
-    ` (${minY}–${maxY}) · ${filterBits.join(' · ')}`;
+  // Stash count for applyFilters to surface alongside the table count
+  lastMapMarkerCount = projects.length;
+  // Stash filter bits so applyFilters can echo them in the count row
+  lastMapFilterBits = filterBits.join(' · ');
+  applyFilters();   // refresh count row + table together so both stay in sync
 }
+let lastMapFilterBits = '';
 
 function renderSidePanel(name){
   const s = SUMMARY_BY_DISTRICT[name] || {};
@@ -552,16 +555,47 @@ function applyFilters(){
     if (typeof va === 'number' && typeof vb === 'number') return (va-vb)*sortDir;
     return String(va).localeCompare(String(vb))*sortDir;
   });
-  renderTable(rows);
-  if (!selectedFeat) {
-    $('countRow').textContent =
-      `Showing ${rows.length.toLocaleString()} row${rows.length===1?'':'s'} `+
-      `(of ${ALL_ROWS.length.toLocaleString()} total) · years ${minY}–${maxY}`;
-  }
+  renderTable(rows, district);
+  // Always update count row with TABLE counts. Map counts (when a TIF is selected)
+  // are shown alongside as a second clause so the user can see both at once.
+  const tableCountText =
+    `📋 Table: ${rows.length.toLocaleString()} row${rows.length===1?'':'s'} ` +
+    (district ? `for “${district}”` : `(of ${ALL_ROWS.length.toLocaleString()} total)`);
+  const mapCountText = (selectedFeat && lastMapMarkerCount != null)
+    ? ` · 🗺 Map: ${lastMapMarkerCount} marker${lastMapMarkerCount===1?'':'s'}` +
+      (lastMapFilterBits ? ` (${lastMapFilterBits})` : '')
+    : '';
+  $('countRow').textContent = `${tableCountText}${mapCountText} · years ${minY}–${maxY}`;
 }
+// Track last drawn map marker count so applyFilters can show both counts side-by-side
+let lastMapMarkerCount = null;
 
-function renderTable(rows){
+function renderTable(rows, district){
   const tbody = $('tbody');
+  // Empty state: tell the user WHY, and (if a district is selected) which years
+  // actually have data for that district so they can adjust the year slider.
+  if (rows.length === 0) {
+    let hint = 'Try clearing some filters above, or click <b>Reset filters</b>.';
+    if (district) {
+      // Find every year that has any record for this district (ignoring year filter)
+      const yrs = new Set();
+      ALL_ROWS.forEach(r => { if (r.tif_district === district && r.year) yrs.add(r.year); });
+      if (yrs.size === 0) {
+        hint = `There are no records at all for <b>${esc(district)}</b> in the dataset.`;
+      } else {
+        const list = [...yrs].sort((a,b)=>a-b);
+        const span = list.length === 1
+          ? `only <b>${list[0]}</b>`
+          : `<b>${list[0]}–${list[list.length-1]}</b> (years with data: ${list.join(', ')})`;
+        hint = `<b>${esc(district)}</b> has data for ${span}. Adjust the year slider to include those years, or click <b>Reset filters</b>.`;
+      }
+    }
+    tbody.innerHTML = `<tr><td colspan="8" style="padding:28px 18px;text-align:center;color:#666;background:#fcfaf2">
+      <div style="font-size:14px;margin-bottom:6px"><b>No rows match your current filters.</b></div>
+      <div style="font-size:12.5px">${hint}</div>
+    </td></tr>`;
+    return;
+  }
   // simple windowing: cap at 1500 rows to keep DOM snappy
   const cap = 1500;
   const slice = rows.slice(0, cap);
@@ -628,6 +662,8 @@ $('resetBtn').addEventListener('click', () => {
   $('mapType').value = 'all';
   $('mapGeo').value  = 'leaves';
   selectedFeat = null;
+  lastMapMarkerCount = null;          // clear so count row reverts to table-only mode
+  lastMapFilterBits  = '';
   tifLayer.eachLayer(l => tifLayer.resetStyle(l));
   clearMarkers();
   $('selPanel').innerHTML = `<div class="tif-name" id="selName">— Click a TIF on the map —</div>`;
