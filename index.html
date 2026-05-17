@@ -739,11 +739,23 @@ function openModal(mode){
     title = '⚠ Caveats — please read before citing these numbers';
     body  = `
       <p>This dashboard pulls directly from the City of Chicago Data Portal. The data is accurate as published,
-         but several aspects of how TIF data is reported are easy to misinterpret. Please skim these
+         but several aspects of how TIF data is reported are easy to misinterpret. Please read these
          <b>${(m.caveats||[]).length} caveats</b> before sharing figures from this dashboard:</p>
       ${caveatsHtml}
       <p style="margin-top:14px"><b>Reference dashboards</b> for cross-checking specific numbers:</p>
-      <ul>${refDash}</ul>`;
+      <ul>${refDash}</ul>
+      <div style="margin-top:22px;padding:14px 16px;background:#fafafa;border:1px solid #d8d8de;border-left:4px solid #2c3e50;border-radius:4px;font-size:11.5px;line-height:1.55;color:#333">
+        <div style="font-weight:700;text-transform:uppercase;letter-spacing:.06em;font-size:11px;color:#2c3e50;margin-bottom:6px">Disclaimer</div>
+        This dashboard is provided for informational and exploratory purposes only. The developer of this
+        application makes no warranties or representations, express or implied, as to the accuracy,
+        completeness, or timeliness of any data, figures, classifications, or visualizations presented herein.
+        Discrepancies or inaccuracies may exist due to errors in the underlying data sources (including but not
+        limited to the City of Chicago Data Portal and the Office of the Inspector General), changes in those
+        sources after the data was last refreshed, or programmatic issues arising during the development of this
+        dashboard. <b>It is always the responsibility of the user to independently verify any data presented in
+        this dashboard</b> before relying on it for any decision-making, reporting, publication, or other use.
+        Use of this dashboard constitutes acceptance of these terms.
+      </div>`;
   } else {
     title = 'About the data';
     body = `
