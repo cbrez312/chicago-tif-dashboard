@@ -776,13 +776,10 @@ function openModal(mode){
   // Bind inner link
   const jc = $('jumpCaveats'); if (jc) jc.addEventListener('click', e => { e.preventDefault(); openModal('caveats'); });
 }
-// Dismissing the modal in ANY way (× button, "I understand", or click outside)
-// counts as "seen" and persists the ack flag in localStorage. This means once
-// a user has viewed the caveats popup once, it won't auto-open on subsequent
-// page loads — even if they dismissed via the × or by clicking outside.
+// Closes the modal regardless of how it was dismissed (× button,
+// "I understand", or click outside).
 function closeModal(){
   $('modal').style.display = 'none';
-  try { localStorage.setItem('tifCaveatsAck','1'); } catch(_){}
 }
 $('aboutLink').addEventListener('click',   e => { e.preventDefault(); openModal('about'); });
 $('caveatsLink').addEventListener('click', e => { e.preventDefault(); openModal('caveats'); });
@@ -790,12 +787,8 @@ $('modalClose').addEventListener('click', closeModal);
 $('modalAck').addEventListener('click',   closeModal);
 $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 
-// Auto-open caveats on first visit (per-browser, dismissable)
-try {
-  if (!localStorage.getItem('tifCaveatsAck')) {
-    setTimeout(() => openModal('caveats'), 400);
-  }
-} catch(_) { /* localStorage may be blocked on file:// in some browsers — that's fine */ }
+// Caveats are available on demand via the ⚠ link in the header — the modal
+// no longer auto-opens on first visit.
 
 /* Pane-size toggle: lets the user shrink the map or grow the data table */
 function setPaneSize(size){
